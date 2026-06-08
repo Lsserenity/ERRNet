@@ -1,7 +1,14 @@
 import os.path
 from os.path import join
 from data.image_folder import make_dataset
-from data.transforms import Sobel, to_norm_tensor, to_tensor, ReflectionSythesis_1, ReflectionSythesis_2
+from data.transforms import (
+    Sobel,
+    to_norm_tensor,
+    to_tensor,
+    ReflectionSythesis_1,
+    ReflectionSythesis_2,
+    ReflectionSythesisRealistic,
+)
 from PIL import Image
 import random
 import torch
@@ -110,18 +117,47 @@ class DataLoader(torch.utils.data.DataLoader):
 
 
 class CEILDataset(BaseDataset):
-    def __init__(self, datadir, fns=None, size=None, enable_transforms=True, low_sigma=2, high_sigma=5, low_gamma=1.3, high_gamma=1.3):
+    def __init__(
+            self,
+            datadir,
+            fns=None,
+            size=None,
+            enable_transforms=True,
+            low_sigma=1,
+            high_sigma=6,
+            low_gamma=1.3,
+            high_gamma=1.3,
+            synthesis_model='realistic',
+            alpha_range=(0.85, 1.0),
+            beta_range=(0.15, 0.6),
+            shift_range=10):
         super(CEILDataset, self).__init__()
         self.size = size
         self.datadir = datadir
         self.enable_transforms = enable_transforms
+        self.synthesis_model = synthesis_model
 
         sortkey = lambda key: os.path.split(key)[-1]
         self.paths = sorted(make_dataset(datadir, fns), key=sortkey)
         if size is not None:
             self.paths = self.paths[:size]
 
-        self.syn_model = ReflectionSythesis_1(kernel_sizes=[11], low_sigma=low_sigma, high_sigma=high_sigma, low_gamma=low_gamma, high_gamma=high_gamma)
+        if synthesis_model == 'baseline':
+            self.syn_model = ReflectionSythesis_1(
+                kernel_sizes=[11],
+                low_sigma=low_sigma,
+                high_sigma=high_sigma,
+                low_gamma=low_gamma,
+                high_gamma=high_gamma)
+        elif synthesis_model == 'realistic':
+            self.syn_model = ReflectionSythesisRealistic(
+                low_sigma=low_sigma,
+                high_sigma=high_sigma,
+                alpha_range=alpha_range,
+                beta_range=beta_range,
+                shift_range=shift_range)
+        else:
+            raise NotImplementedError('synthesis model [%s] is not implemented' % synthesis_model)
         self.reset(shuffle=False)
 
     def reset(self, shuffle=True):

@@ -157,6 +157,117 @@ class ReflectionSythesis_1(object):
         return B_, R_blur, M_
 
 
+class ReflectionSythesisRealistic(object):
+    """Realistic reflection synthesis with local masks and photometric jitter.
+
+    The synthesized image follows M = clip(alpha * B + beta * A * R, 0, 1),
+    where R is blurred, color-jittered, and slightly shifted, and A is a
+    low-frequency local reflection mask.
+    """
+    def __init__(
+            self,
+            kernel_sizes=None,
+            low_sigma=1.0,
+            high_sigma=6.0,
+            alpha_range=(0.85, 1.0),
+            beta_range=(0.15, 0.6),
+            shift_range=10,
+            brightness_range=(0.8, 1.2),
+            contrast_range=(0.8, 1.2),
+            saturation_range=(0.8, 1.2),
+            gamma_range=(0.8, 1.25),
+            mask_blur_range=(21, 61)):
+        self.kernel_sizes = kernel_sizes or [3, 5, 7, 9, 11, 15]
+        self.low_sigma = low_sigma
+        self.high_sigma = high_sigma
+        self.alpha_range = alpha_range
+        self.beta_range = beta_range
+        self.shift_range = shift_range
+        self.brightness_range = brightness_range
+        self.contrast_range = contrast_range
+        self.saturation_range = saturation_range
+        self.gamma_range = gamma_range
+        self.mask_blur_range = mask_blur_range
+        print('[i] realistic reflection sythesis model: {}'.format({
+            'kernel_sizes': self.kernel_sizes, 'low_sigma': low_sigma, 'high_sigma': high_sigma,
+            'alpha_range': alpha_range, 'beta_range': beta_range, 'shift_range': shift_range}))
+
+    @staticmethod
+    def _odd_kernel(value):
+        value = int(value)
+        if value < 1:
+            value = 1
+        if value % 2 == 0:
+            value += 1
+        return value
+
+    @staticmethod
+    def _sample_range(value_range):
+        low, high = value_range
+        return np.random.uniform(low, high)
+
+    def _jitter_reflection(self, R):
+        img = Image.fromarray(np.uint8(np.clip(R, 0, 1) * 255.0))
+        img = ImageEnhance.Brightness(img).enhance(self._sample_range(self.brightness_range))
+        img = ImageEnhance.Contrast(img).enhance(self._sample_range(self.contrast_range))
+        img = ImageEnhance.Color(img).enhance(self._sample_range(self.saturation_range))
+        R = np.asarray(img, np.float32) / 255.0
+
+        gamma = self._sample_range(self.gamma_range)
+        R = np.power(np.clip(R, 0, 1), gamma)
+        return R
+
+    def _shift_reflection(self, R):
+        if self.shift_range <= 0:
+            return R
+
+        h, w = R.shape[:2]
+        dx = np.random.randint(-self.shift_range, self.shift_range + 1)
+        dy = np.random.randint(-self.shift_range, self.shift_range + 1)
+        matrix = np.float32([[1, 0, dx], [0, 1, dy]])
+        return cv2.warpAffine(R, matrix, (w, h), flags=cv2.INTER_LINEAR,
+                              borderMode=cv2.BORDER_REFLECT_101)
+
+    def _local_mask(self, height, width):
+        small_h = max(4, height // 16)
+        small_w = max(4, width // 16)
+        mask = np.random.rand(small_h, small_w).astype(np.float32)
+        mask = cv2.resize(mask, (width, height), interpolation=cv2.INTER_CUBIC)
+
+        low, high = self.mask_blur_range
+        kernel_size = self._odd_kernel(np.random.randint(low, high + 1))
+        mask = cv2.GaussianBlur(mask, (kernel_size, kernel_size), 0)
+        mask = mask - mask.min()
+        mask = mask / (mask.max() + 1e-6)
+        mask = 0.25 + 0.75 * mask
+        return mask[..., None].astype(np.float32)
+
+    def __call__(self, B, R):
+        if not _is_pil_image(B):
+            raise TypeError('B should be PIL Image. Got {}'.format(type(B)))
+        if not _is_pil_image(R):
+            raise TypeError('R should be PIL Image. Got {}'.format(type(R)))
+
+        B_ = np.asarray(B, np.float32) / 255.0
+        R_ = np.asarray(R, np.float32) / 255.0
+
+        R_ = self._jitter_reflection(R_)
+        R_ = self._shift_reflection(R_)
+
+        kernel_size = self._odd_kernel(np.random.choice(self.kernel_sizes))
+        sigma = np.random.uniform(self.low_sigma, self.high_sigma)
+        R_blur = cv2.GaussianBlur(R_, (kernel_size, kernel_size), sigma)
+
+        mask = self._local_mask(B_.shape[0], B_.shape[1])
+        alpha = self._sample_range(self.alpha_range)
+        beta = self._sample_range(self.beta_range)
+
+        R_masked = np.clip(mask * R_blur, 0, 1)
+        M_ = np.clip(alpha * B_ + beta * R_masked, 0, 1)
+
+        return np.float32(B_), np.float32(R_masked), np.float32(M_)
+
+
 class Sobel(object):
     def __call__(self, img):
         if not _is_pil_image(img):

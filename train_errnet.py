@@ -34,7 +34,10 @@ datadir_real = join(datadir, 'real_train')
 train_dataset = datasets.CEILDataset(
     datadir_syn, read_fns('VOC2012_224_train_png.txt'), size=opt.max_dataset_size, enable_transforms=True, 
     low_sigma=opt.low_sigma, high_sigma=opt.high_sigma,
-    low_gamma=opt.low_gamma, high_gamma=opt.high_gamma)
+    low_gamma=opt.low_gamma, high_gamma=opt.high_gamma,
+    synthesis_model=opt.synthesis_model,
+    alpha_range=opt.alpha_range, beta_range=opt.beta_range,
+    shift_range=opt.shift_range)
 
 train_dataset_real = datasets.CEILTestDataset(datadir_real, enable_transforms=True)
 

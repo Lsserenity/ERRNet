@@ -17,10 +17,14 @@ class TrainOptions(BaseOptions):
         self.parser.add_argument('--lr', type=float, default=1e-4, help='initial learning rate for adam')
         self.parser.add_argument('--wd', type=float, default=0, help='weight decay for adam')
 
-        self.parser.add_argument('--low_sigma', type=float, default=2, help='min sigma in synthetic dataset')
-        self.parser.add_argument('--high_sigma', type=float, default=5, help='max sigma in synthetic dataset')
+        self.parser.add_argument('--low_sigma', type=float, default=1, help='min sigma in synthetic dataset')
+        self.parser.add_argument('--high_sigma', type=float, default=6, help='max sigma in synthetic dataset')
         self.parser.add_argument('--low_gamma', type=float, default=1.3, help='max gamma in synthetic dataset')
         self.parser.add_argument('--high_gamma', type=float, default=1.3, help='max gamma in synthetic dataset')
+        self.parser.add_argument('--synthesis_model', type=str, default='realistic', choices=['baseline', 'realistic'], help='reflection synthesis strategy for synthetic VOC pairs')
+        self.parser.add_argument('--alpha_range', type=float, nargs=2, default=[0.85, 1.0], help='transmission intensity range for realistic synthesis')
+        self.parser.add_argument('--beta_range', type=float, nargs=2, default=[0.15, 0.6], help='reflection intensity range for realistic synthesis')
+        self.parser.add_argument('--shift_range', type=int, default=10, help='max absolute reflection translation in pixels for realistic synthesis')
         
         # data augmentation
         self.parser.add_argument('--batchSize', '-b', type=int, default=1, help='input batch size')
