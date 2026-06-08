@@ -65,6 +65,9 @@ class HFConsistencyLoss(nn.Module):
         self.padding = kernel_size // 2
 
     def forward(self, predict, target):
+        # 确保 kernel 与输入在同一设备上
+        if self.kernel.device != predict.device:
+            self.kernel = self.kernel.to(predict.device)
         hp_pred = _highpass(predict, self.kernel, self.padding)
         hp_target = _highpass(target, self.kernel, self.padding)
         return self.criterion(hp_pred, hp_target)
