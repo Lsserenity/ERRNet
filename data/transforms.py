@@ -239,7 +239,6 @@ class ReflectionSythesisRealistic(object):
         mask = cv2.GaussianBlur(mask, (kernel_size, kernel_size), 0)
         mask = mask - mask.min()
         mask = mask / (mask.max() + 1e-6)
-        mask = 0.25 + 0.75 * mask
         return mask[..., None].astype(np.float32)
 
     def __call__(self, B, R):
