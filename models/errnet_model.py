@@ -229,6 +229,11 @@ class ERRNetModel(ERRNetBase):
             vggloss.initialize(losses.VGGLoss(self.vgg))
             self.loss_dic['t_vgg'] = vggloss
 
+            # High-Frequency Consistency Loss
+            hfloss = losses.ContentLoss()
+            hfloss.initialize(losses.HFConsistencyLoss(channels=3, kernel_size=5, sigma=1.0))
+            self.loss_dic['t_hf'] = hfloss
+
             cxloss = losses.ContentLoss()
             if opt.unaligned_loss == 'vgg':
                 cxloss.initialize(losses.VGGLoss(self.vgg, weights=[0.1], indices=[opt.vgg_layer]))
@@ -281,20 +286,24 @@ class ERRNetModel(ERRNetBase):
         self.loss_icnn_pixel = None
         self.loss_icnn_vgg = None
         self.loss_G_GAN = None
+        self.loss_icnn_hf = None
 
         if self.opt.lambda_gan > 0:
             self.loss_G_GAN = self.loss_dic['gan'].get_g_loss(
                 self.netD, self.input, self.output_i, self.target_t) #self.pred_real.detach())
             self.loss_G += self.loss_G_GAN*self.opt.lambda_gan
-        
+
         if self.aligned:
             self.loss_icnn_pixel = self.loss_dic['t_pixel'].get_loss(
                 self.output_i, self.target_t)
-            
+
             self.loss_icnn_vgg = self.loss_dic['t_vgg'].get_loss(
                 self.output_i, self.target_t)
 
-            self.loss_G += self.loss_icnn_pixel+self.loss_icnn_vgg*self.opt.lambda_vgg
+            self.loss_icnn_hf = self.loss_dic['t_hf'].get_loss(
+                self.output_i, self.target_t)
+
+            self.loss_G += self.loss_icnn_pixel+self.loss_icnn_vgg*self.opt.lambda_vgg+self.loss_icnn_hf*self.opt.lambda_hf
         else:
             self.loss_CX = self.loss_dic['t_cx'].get_loss(self.output_i, self.target_t)
             
@@ -339,7 +348,9 @@ class ERRNetModel(ERRNetBase):
             ret_errors['IPixel'] = self.loss_icnn_pixel.item()
         if self.loss_icnn_vgg is not None:
             ret_errors['VGG'] = self.loss_icnn_vgg.item()
-            
+        if self.loss_icnn_hf is not None:
+            ret_errors['HFLoss'] = self.loss_icnn_hf.item()
+
         if self.opt.lambda_gan > 0 and self.loss_G_GAN is not None:
             ret_errors['G'] = self.loss_G_GAN.item()
             ret_errors['D'] = self.loss_D.item()

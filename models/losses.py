@@ -32,6 +32,47 @@ class GradientLoss(nn.Module):
         return self.loss(predict_gradx, target_gradx) + self.loss(predict_grady, target_grady)
 
 
+def _gaussian_kernel(channels, kernel_size=5, sigma=1.0):
+    """生成 2D 高斯核，扩展到多通道"""
+    ax = torch.arange(-kernel_size // 2 + 1., kernel_size // 2 + 1.)
+    xx, yy = torch.meshgrid(ax, ax, indexing='ij')
+    kernel = torch.exp(-(xx**2 + yy**2) / (2. * sigma**2))
+    kernel = kernel / kernel.sum()
+    kernel = kernel.view(1, 1, kernel_size, kernel_size)
+    kernel = kernel.repeat(channels, 1, 1, 1)
+    return kernel
+
+
+def _highpass(x, kernel, padding):
+    """提取高频分量：H(x) = x - G(x)"""
+    blurred = F.conv2d(x, kernel, groups=x.size(1), padding=padding)
+    return x - blurred
+
+
+class HFConsistencyLoss(nn.Module):
+    """高频一致性损失 (High-Frequency Consistency Loss)
+
+    将图像分解为低频和高频，强制预测的高频与 GT 的高频一致。
+    H(X) = X - GaussianBlur(X)
+    loss = ||H(pred) - H(gt)||_1
+    """
+
+    def __init__(self, channels=3, kernel_size=5, sigma=1.0):
+        super(HFConsistencyLoss, self).__init__()
+        self.criterion = nn.L1Loss()
+        kernel = _gaussian_kernel(channels, kernel_size, sigma)
+        self.register_buffer('kernel', kernel)
+        self.padding = kernel_size // 2
+
+    def forward(self, predict, target):
+        # 确保 kernel 与输入在同一设备上
+        if self.kernel.device != predict.device:
+            self.kernel = self.kernel.to(predict.device)
+        hp_pred = _highpass(predict, self.kernel, self.padding)
+        hp_target = _highpass(target, self.kernel, self.padding)
+        return self.criterion(hp_pred, hp_target)
+
+
 class MultipleLoss(nn.Module):
     def __init__(self, losses, weight=None):
         super(MultipleLoss, self).__init__()
